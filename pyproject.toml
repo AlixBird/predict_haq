@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "predict-haq-alix"
+version = "0.0.1"
+authors = [
+  { name="Alix Bird", email="alixjbird@gmail.com" },
+]
+description = "Rheumatoid arthritis functional outcome prediction with AI"
+readme = "README.md"
+requires-python = ">=3.9"
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
