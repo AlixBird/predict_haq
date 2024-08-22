@@ -138,6 +138,12 @@ class XrayDataModule(pl.LightningDataModule):
             )
 
     def train_dataloader(self):
+        """Training data loader
+
+        Returns
+        -------
+        DataLoader
+        """
         return DataLoader(
             self.train_dataset,
             batch_size=8,
@@ -147,6 +153,12 @@ class XrayDataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self):
+        """Validation data loader
+
+        Returns
+        -------
+        DataLoader
+        """
         return DataLoader(
             self.val_dataset,
             batch_size=8,
@@ -156,6 +168,12 @@ class XrayDataModule(pl.LightningDataModule):
         )
 
     def test_dataloader(self):
+        """Test Dataloader
+
+        Returns
+        -------
+        DataLoader
+        """
         return DataLoader(
             self.test_dataset,
             batch_size=8,
@@ -180,9 +198,32 @@ class DenseNetLightning(pl.LightningModule):
         self.model.classifier = nn.Linear(self.model.classifier.in_features, 1)
 
     def forward(self, inputs):  # pylint: disable=arguments-differ
+        """Forward pass
+
+        Parameters
+        ----------
+        inputs : torch.Tensor
+            input image
+
+        Returns
+        -------
+        torch.Tensor
+            prediction
+        """
         return self.model(inputs)
 
     def training_step(self, batch):  # pylint: disable=arguments-differ
+        """Takes training step, calculates loss per batch
+
+        Parameters
+        ----------
+        batch : torch.Tensor
+            batch of image data
+        Returns
+        -------
+        float
+            loss value
+        """
         inputs, targets = batch
         inputs = inputs.float()
         targets = targets.float()
