@@ -1,3 +1,8 @@
+"""Train model.
+
+Trains deep learning model with PytorchLightning to predict
+function in rheumatoid arthritis
+"""
 from __future__ import annotations
 
 import argparse
@@ -7,6 +12,15 @@ from predict_haq.train import train_model
 
 
 def arg_parse_train():
+    """Parse args
+
+    Parses args of the path to data and path to where checkpoints
+    ought to be saved
+
+    Returns
+    -------
+    Args
+    """
     parser = argparse.ArgumentParser(
         description='''Predict functional outcomes in
                      rheumatoid arthritis using AI''',
@@ -18,16 +32,16 @@ def arg_parse_train():
 
 
 def main():
+    """Takes input arg paths and train models based on parameter
+    """
     args = arg_parse_train()
     dataset_path = Path(args.datasetpath)
     checkpoint_path = Path(args.checkpointpath)
     train_model(
-        DATASET_PATH=dataset_path,
-        CHECKPOINT_PATH=checkpoint_path,
+        dataset_path=dataset_path,
+        checkpoint_path=checkpoint_path,
         which_label='HAQ',
         seed=42,
-        max_epochs=100,
-        batch_size=4,
         image_size=128,
     )
 
