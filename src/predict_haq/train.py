@@ -72,6 +72,13 @@ class XrayDataModule(pl.LightningDataModule):
         self.test_dataset = None
 
     def setup(self, stage: str):
+        """Setup training, validation and testdata
+
+        Parameters
+        ----------
+        stage : str
+            Fitting, testing or prediction stage
+        """
         if stage == 'fit':
             # Split into train and validation randomly at the patient level
             unique_ids = self.data['Patient_ID'].unique()
@@ -234,6 +241,13 @@ class DenseNetLightning(pl.LightningModule):
     # def validation_step(self, batch):
 
     def configure_optimizers(self):
+        """Configure optimizer
+
+        Returns
+        -------
+        torch.optim
+            Optimizer
+        """
         return torch.optim.Adam(self.parameters(), lr=1e-3)
 
 
