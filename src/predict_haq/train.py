@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import os
 import random
+from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
 import torch
 from PIL import Image
+from predict_haq.test_metrics import bootstrap_auc
 from torch import nn
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
@@ -59,19 +62,20 @@ class XrayDataModule(pl.LightningDataModule):
     """
 
     def __init__(
-            self, data, image_dir,
+            self, data, image_dir, outcome,
             transform=None, val_split=0.2,
     ):
         super().__init__()
         self.data = data
         self.image_dir = image_dir
+        self.outcome = outcome
         self.transform = transform
         self.val_split = val_split
         self.train_dataset = None
         self.val_dataset = None
         self.test_dataset = None
 
-    def setup(self, stage: str):
+    def setup(self):
         """Setup training, validation and testdata
 
         Parameters
@@ -79,70 +83,61 @@ class XrayDataModule(pl.LightningDataModule):
         stage : str
             Fitting, testing or prediction stage
         """
-        if stage == 'fit':
-            # Split into train and validation randomly at the patient level
-            unique_ids = self.data['Patient_ID'].unique()
-            random.shuffle(unique_ids)
-            cutoff = round(len(unique_ids) * self.val_split)
-            valid_patient_ids = unique_ids[0:cutoff]
-            train_patient_ids = unique_ids[cutoff:]
 
-            # Keep rows where the filepath to the image exists
-            train_data = self.data[
-                self.data['Patient_ID'].isin(
-                    train_patient_ids,
-                )
-            ].dropna(
-                subset=['HAQ', 'UID'],
-            ).reset_index(drop=True)
-            valid_data = self.data[
-                self.data['Patient_ID'].isin(
-                    valid_patient_ids,
-                )
-            ].dropna(
-                subset=['HAQ', 'UID'],
-            ).reset_index(drop=True)
+        # Split into train and validation randomly at the patient level
+        unique_ids = self.data['Patient_ID'].unique()
+        random.shuffle(unique_ids)
+        cutoff = round(len(unique_ids) * self.val_split)
+        valid_patient_ids = unique_ids[0:cutoff]
+        train_patient_ids = unique_ids[cutoff:]
 
-            train_data = train_data[[
-                os.path.isfile(
-                    str(self.image_dir) + '/' + str(i) + '.png',
-                ) for i in train_data['UID']
-            ]]
-            valid_data = valid_data[[
-                os.path.isfile(
-                    str(self.image_dir) + '/' + str(i) + '.png',
-                ) for i in valid_data['UID']
-            ]]
-
-            train_image_names = list(train_data['UID'])
-            train_labels = list(train_data['HAQ'])
-            valid_image_names = list(valid_data['UID'])
-            valid_labels = list(valid_data['HAQ'])
-
-            self.train_dataset = XrayDataset(
-                image_dir=self.image_dir,
-                labels=train_labels,
-                image_names=train_image_names,
-                transform=self.transform,
+        train_data = self.data[
+            self.data['Patient_ID'].isin(
+                train_patient_ids,
             )
-            self.val_dataset = XrayDataset(
-                image_dir=self.image_dir,
-                labels=valid_labels,
-                image_names=valid_image_names,
-                transform=self.transform,
-            )
-        if stage == 'test':
-            # use data from the test dataframe here
+        ]
 
-            test_labels = None
-            test_image_names = None
-
-            self.test_dataset = XrayDataset(
-                image_dir=self.image_dir,
-                labels=test_labels,
-                image_names=test_image_names,
-                transform=self.transform,
+        valid_data = self.data[
+            self.data['Patient_ID'].isin(
+                valid_patient_ids,
             )
+        ]
+
+        train_image_names = list(train_data['UID'])
+        valid_image_names = list(valid_data['UID'])
+
+        train_labels = []
+        for i in self.outcome:
+            train_labels.append(list(train_data[i]))
+
+        valid_labels = []
+        for i in self.outcome:
+            valid_labels.append(list(valid_data[i]))
+
+        train_labels = np.array(train_labels).transpose().squeeze()
+        valid_labels = np.array(valid_labels).transpose().squeeze()
+
+        self.train_dataset = XrayDataset(
+            image_dir=self.image_dir,
+            labels=train_labels,
+            image_names=train_image_names,
+            transform=self.transform,
+        )
+        self.val_dataset = XrayDataset(
+            image_dir=self.image_dir,
+            labels=valid_labels,
+            image_names=valid_image_names,
+            transform=self.transform,
+        )
+
+        # This can be changed to the test data once get to that point
+        # Test on validation data until finished model development
+        self.test_dataset = XrayDataset(
+            image_dir=self.image_dir,
+            labels=valid_labels,
+            image_names=valid_image_names,
+            transform=self.transform,
+        )
 
     def train_dataloader(self):
         """Training data loader
@@ -153,10 +148,10 @@ class XrayDataModule(pl.LightningDataModule):
         """
         return DataLoader(
             self.train_dataset,
-            batch_size=8,
+            batch_size=16,
             shuffle=True,
-            num_workers=2,
-            pin_memory=True,
+            num_workers=0,
+            pin_memory=False,
         )
 
     def val_dataloader(self):
@@ -168,10 +163,10 @@ class XrayDataModule(pl.LightningDataModule):
         """
         return DataLoader(
             self.val_dataset,
-            batch_size=8,
+            batch_size=16,
             shuffle=False,
-            num_workers=2,
-            pin_memory=True,
+            num_workers=0,
+            pin_memory=False,
         )
 
     def test_dataloader(self):
@@ -183,10 +178,10 @@ class XrayDataModule(pl.LightningDataModule):
         """
         return DataLoader(
             self.test_dataset,
-            batch_size=8,
+            batch_size=16,
             shuffle=False,
-            num_workers=2,
-            pin_memory=True,
+            num_workers=0,
+            pin_memory=False,
         )
 
 
@@ -199,10 +194,16 @@ class DenseNetLightning(pl.LightningModule):
         _description_
     """
 
-    def __init__(self):
+    def __init__(self, out_features=1, learning_rate=1e-4):
         super().__init__()
         self.model = densenet161(weights=DenseNet161_Weights.IMAGENET1K_V1)
-        self.model.classifier = nn.Linear(self.model.classifier.in_features, 1)
+        self.model.classifier = nn.Linear(
+            self.model.classifier.in_features,
+            out_features,
+        )
+        self.learning_rate = learning_rate
+        self.test_preds = []
+        self.test_true = []
 
     def forward(self, inputs):  # pylint: disable=arguments-differ
         """Forward pass
@@ -223,6 +224,26 @@ class DenseNetLightning(pl.LightningModule):
         """Takes training step, calculates loss per batch
 
         Parameters
+        ----------git
+        batch : torch.Tensor
+            batch of image data
+        Returns
+        -------
+        float
+            loss value
+        """
+        inputs, targets = batch
+        inputs = inputs.float()
+        targets = targets.float()/18
+        outputs = self(inputs).squeeze(dim=1)
+        loss = nn.MSELoss()(outputs, targets)
+        self.log('train_loss', loss, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch):  # pylint: disable=arguments-differ
+        """Takes training step, calculates loss per batch
+
+        Parameters
         ----------
         batch : torch.Tensor
             batch of image data
@@ -236,9 +257,44 @@ class DenseNetLightning(pl.LightningModule):
         targets = targets.float()
         outputs = self(inputs).squeeze(dim=1)
         loss = nn.MSELoss()(outputs, targets)
-        return loss
+        rmse = torch.sqrt(loss)
 
-    # def validation_step(self, batch):
+        self.log('val_MSE (loss)', loss)
+        self.log('val_RMSE', rmse)
+
+    def test_step(self, batch):
+        inputs, targets = batch
+        inputs = inputs.float()
+        targets = targets.float()
+        outputs = self(inputs).squeeze(dim=1)
+        loss = nn.MSELoss()(outputs, targets)
+        rmse = torch.sqrt(loss)
+
+        self.log('test_MSE', loss)
+        self.log('test_RMSE', rmse)
+
+        self.test_preds.append(outputs)
+        self.test_true.append(targets)
+
+    def on_test_epoch_end(self):
+        # Optionally, aggregate outputs from the entire test dataset
+        preds = torch.cat(self.test_preds)
+        targets = torch.cat(self.test_true)
+        # THIS ONLY WORKS FOR HAQ
+        targets_bin = [0 if i < 0.125 else 1 for i in targets.cpu()]
+        print(preds.cpu())
+        mean_auc, confidence_lower, confidence_upper = bootstrap_auc(
+            targets_bin, preds.cpu(), 1000,
+        )
+        avg_mse = nn.MSELoss()(preds, targets)
+        avg_rmse = torch.sqrt(avg_mse)
+        # Log the averaged metrics
+        self.log('avg_test_MSE', avg_mse)
+        self.log('avg_test_RMSE', avg_rmse)
+        self.log('mean_AUC', mean_auc)
+        self.log('AUC_95_CI', [confidence_lower, confidence_upper])
+
+        return mean_auc
 
     def configure_optimizers(self):
         """Configure optimizer
@@ -248,15 +304,18 @@ class DenseNetLightning(pl.LightningModule):
         torch.optim
             Optimizer
         """
-        return torch.optim.Adam(self.parameters(), lr=1e-3)
+        return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
 
 
 def train_model(
-        dataset_path: Path,
+        image_path: Path,
+        data: pd.DataFrame,
         checkpoint_path: Path,
-        which_label: str,
+        outcome: str,
         seed: int,
         image_size: int,
+        max_epochs: int,
+        learning_rate: int,
 ):
     """Train lightning model
 
@@ -268,9 +327,6 @@ def train_model(
         Path to the image and csv data
     checkpoint_path : Path
         Path to save model training files
-    which_label : str
-        Which functional outcome to train to
-        (i.e. HAQ, HAQ-change, pain, SF36)
     seed : int
         random seed for everything pl related
     max_epochs : int
@@ -296,29 +352,63 @@ def train_model(
         transforms.ToTensor(),
     ])
 
-    # NEED TO DROP IF GREATERN THAN MAX VALUE FOR HAQ FIRST
-    # NEED A GENERALISABLE SOLUTION DEPENDENT ON OUTCOME CHOSEN TO TRAIN TO
-
-    labels_df = pd.read_csv(
-        dataset_path / 'dataframes' /
-        'xrays_train.csv',
-    ).dropna(subset=[which_label])
-
     data_module = XrayDataModule(
-        data=labels_df,
+        data=data,
+        outcome=outcome,
         transform=transform,
-        image_dir=dataset_path / 'xray_images',
+        image_dir=image_path,
     )
-    data_module.setup(stage='fit')
+    data_module.setup()
     train_loader = data_module.train_dataloader()
     val_loader = data_module.val_dataloader()
+    test_loader = data_module.test_dataloader()
 
     torch.set_float32_matmul_precision('medium')
 
-    model = DenseNetLightning()
+    model = DenseNetLightning(
+        out_features=len(
+            outcome,
+        ), learning_rate=learning_rate,
+    )
+
+    tb_logger = pl.loggers.TensorBoardLogger(
+        save_dir='lightning_logs',  # Change this to your desired directory
+        # Name of the experiment, can include subfolders
+        name=(f'''LOG_{outcome[0]}
+              _SEED_{str(seed)}
+              _IMSIZE_{str(image_size)}
+              _EPOCHS_{str(max_epochs)}
+              _LR_{str(learning_rate)}'''),
+        version=1,                # Version of the experiment
+    )
+
     trainer = pl.Trainer(
         deterministic=True,
-        max_epochs=100, log_every_n_steps=50,
+        max_epochs=max_epochs,
+        logger=tb_logger,
+        accelerator='cpu',
     )
 
     trainer.fit(model, train_loader, val_loader)
+    auc = trainer.test(model, test_loader)
+
+    filename_date = str(datetime.today().strftime('%Y-%m-%d')) + '_results.csv'
+    path_df = Path(checkpoint_path / filename_date)
+    data_row = pd.DataFrame(
+        {
+            'Outcome': outcome[0], 'Seed': seed,
+            'Imsize': image_size, 'Epochs': max_epochs,
+            'LR': learning_rate, 'AUC': auc,
+        },
+        index=[0],
+    ).reset_index(drop=True)
+    # if df exists
+    if os.path.isfile(path_df):
+        results_df = pd.read_csv(
+            path_df, index_col=False,
+        ).reset_index(drop=True)
+        results_df = pd.concat([results_df, data_row], ignore_index=True)
+    else:
+        results_df = data_row
+
+    results_df.to_csv(path_df, index=False)
