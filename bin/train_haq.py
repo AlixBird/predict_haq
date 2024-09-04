@@ -35,10 +35,10 @@ def arg_parse_train():
     )
     parser.add_argument(
         '--image_size', help='image size (lenght of side of square)',
-        default=500,
+        default=100,
     )
     parser.add_argument(
-        '--max_epochs', help='number of training epochs', default=5,
+        '--max_epochs', help='number of training epochs', default=2,
     )
     parser.add_argument(
         '--learning_rate',

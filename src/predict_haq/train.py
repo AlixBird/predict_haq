@@ -1,6 +1,7 @@
 """Splits train valid data and trains model."""
 from __future__ import annotations
 
+import json
 import os
 import random
 from pathlib import Path
@@ -380,16 +381,25 @@ def train_model(
     )
 
     trainer.fit(model, train_loader, val_loader)
-    auc = trainer.test(model, test_loader)
+    results = str(trainer.test(model, test_loader)).replace("'", '"')
 
     filename_date = outcome + '_results.csv'
     path_df = Path(checkpoint_path / filename_date)
+
+    params_dict = {
+        'Outcome': outcome, 'Seed': seed,
+        'Imsize': image_size, 'Epochs': max_epochs,
+        'LR': learning_rate,
+    }
+
+    results_dict = json.loads(results)[0]
+
+    print(params_dict)
+    print(results_dict)
+    params_dict.update(results_dict)
+
     data_row = pd.DataFrame(
-        {
-            'Outcome': outcome, 'Seed': seed,
-            'Imsize': image_size, 'Epochs': max_epochs,
-            'LR': learning_rate, 'AUC': auc,
-        },
+        params_dict,
         index=[0],
     ).reset_index(drop=True)
     # if df exists
