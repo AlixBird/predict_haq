@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import os
 import random
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -17,7 +16,6 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.models import densenet161
-from torchvision.models import DenseNet161_Weights
 
 
 class XrayDataset(Dataset):
@@ -63,7 +61,7 @@ class XrayDataModule(pl.LightningDataModule):
 
     def __init__(
             self, data, image_dir, outcome,
-            transform=None, val_split=0.2,
+            transform=None, val_split=0.2, num_workers=2,
     ):
         super().__init__()
         self.data = data
@@ -71,6 +69,7 @@ class XrayDataModule(pl.LightningDataModule):
         self.outcome = outcome
         self.transform = transform
         self.val_split = val_split
+        self.num_workers = num_workers
         self.train_dataset = None
         self.val_dataset = None
         self.test_dataset = None
@@ -106,16 +105,8 @@ class XrayDataModule(pl.LightningDataModule):
         train_image_names = list(train_data['UID'])
         valid_image_names = list(valid_data['UID'])
 
-        train_labels = []
-        for i in self.outcome:
-            train_labels.append(list(train_data[i]))
-
-        valid_labels = []
-        for i in self.outcome:
-            valid_labels.append(list(valid_data[i]))
-
-        train_labels = np.array(train_labels).transpose().squeeze()
-        valid_labels = np.array(valid_labels).transpose().squeeze()
+        train_labels = np.array(list(train_data[self.outcome]))
+        valid_labels = np.array(list(valid_data[self.outcome]))
 
         self.train_dataset = XrayDataset(
             image_dir=self.image_dir,
@@ -150,7 +141,7 @@ class XrayDataModule(pl.LightningDataModule):
             self.train_dataset,
             batch_size=16,
             shuffle=True,
-            num_workers=0,
+            num_workers=self.num_workers,
             pin_memory=False,
         )
 
@@ -165,7 +156,7 @@ class XrayDataModule(pl.LightningDataModule):
             self.val_dataset,
             batch_size=16,
             shuffle=False,
-            num_workers=0,
+            num_workers=self.num_workers,
             pin_memory=False,
         )
 
@@ -180,7 +171,7 @@ class XrayDataModule(pl.LightningDataModule):
             self.test_dataset,
             batch_size=16,
             shuffle=False,
-            num_workers=0,
+            num_workers=self.num_workers,
             pin_memory=False,
         )
 
@@ -196,7 +187,7 @@ class DenseNetLightning(pl.LightningModule):
 
     def __init__(self, out_features=1, learning_rate=1e-4):
         super().__init__()
-        self.model = densenet161(weights=DenseNet161_Weights.IMAGENET1K_V1)
+        self.model = densenet161()  # weights=DenseNet161_Weights.IMAGENET1K_V1
         self.model.classifier = nn.Linear(
             self.model.classifier.in_features,
             out_features,
@@ -282,7 +273,6 @@ class DenseNetLightning(pl.LightningModule):
         targets = torch.cat(self.test_true)
         # THIS ONLY WORKS FOR HAQ
         targets_bin = [0 if i < 0.125 else 1 for i in targets.cpu()]
-        print(preds.cpu())
         mean_auc, confidence_lower, confidence_upper = bootstrap_auc(
             targets_bin, preds.cpu(), 1000,
         )
@@ -292,7 +282,8 @@ class DenseNetLightning(pl.LightningModule):
         self.log('avg_test_MSE', avg_mse)
         self.log('avg_test_RMSE', avg_rmse)
         self.log('mean_AUC', mean_auc)
-        self.log('AUC_95_CI', [confidence_lower, confidence_upper])
+        self.log('AUC_95_CI_lower', confidence_lower)
+        self.log('AUC_95_CI_upper', confidence_upper)
 
         return mean_auc
 
@@ -366,16 +357,15 @@ def train_model(
     torch.set_float32_matmul_precision('medium')
 
     model = DenseNetLightning(
-        out_features=len(
-            outcome,
-        ), learning_rate=learning_rate,
+        out_features=1,
+        learning_rate=learning_rate,
     )
 
     tb_logger = pl.loggers.TensorBoardLogger(
         save_dir='lightning_logs',  # Change this to your desired directory
         # Name of the experiment, can include subfolders
-        name=(f'''LOG_{outcome[0]}
-              _SEED_{str(seed)}
+        name=(f'''LOG_{outcome}
+              _SEED_{str(seed)}f
               _IMSIZE_{str(image_size)}
               _EPOCHS_{str(max_epochs)}
               _LR_{str(learning_rate)}'''),
@@ -386,17 +376,17 @@ def train_model(
         deterministic=True,
         max_epochs=max_epochs,
         logger=tb_logger,
-        accelerator='cpu',
+        accelerator='gpu',
     )
 
     trainer.fit(model, train_loader, val_loader)
     auc = trainer.test(model, test_loader)
 
-    filename_date = str(datetime.today().strftime('%Y-%m-%d')) + '_results.csv'
+    filename_date = outcome + '_results.csv'
     path_df = Path(checkpoint_path / filename_date)
     data_row = pd.DataFrame(
         {
-            'Outcome': outcome[0], 'Seed': seed,
+            'Outcome': outcome, 'Seed': seed,
             'Imsize': image_size, 'Epochs': max_epochs,
             'LR': learning_rate, 'AUC': auc,
         },
