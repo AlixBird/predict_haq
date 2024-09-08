@@ -9,8 +9,8 @@ import argparse
 from pathlib import Path
 
 from predict_haq.preprocessing import process_dataframe
-from predict_haq.preprocessing import process_dataframe_future_haq
 from predict_haq.train import train_model
+# from predict_haq.preprocessing import process_dataframe_future_haq
 
 
 def arg_parse_train():
@@ -38,7 +38,7 @@ def arg_parse_train():
         default=100,
     )
     parser.add_argument(
-        '--max_epochs', help='number of training epochs', default=2,
+        '--max_epochs', help='number of training epochs', default=20,
     )
     parser.add_argument(
         '--learning_rate',
@@ -62,9 +62,11 @@ def main():
     csv_path = Path(args.csvpath)
 
     if args.outcome == 'HAQ':
-        df = process_dataframe(csv_path, image_path, args.outcome)
-    elif args.outcome == 'Change_HAQ':
-        df = process_dataframe_future_haq('HAQ', csv_path, image_path)
+        df = process_dataframe(csv_path / 'xrays_train.csv', image_path, 'HAQ')
+    if args.outcome == 'Future_HAQ':
+        df = process_dataframe(
+            csv_path / 'future_function.csv', image_path, 'HAQ',
+        )
 
     print(f'SEED: {args.seed}')
     print(f'IMAGE SIZE: {args.image_size}')
@@ -77,7 +79,8 @@ def main():
     train_model(
         image_path=image_path,
         data=df,
-        outcome=args.outcome,
+        outcome_train=args.outcome,
+        outcome='HAQ',
         checkpoint_path=checkpoint_path,
         seed=int(args.seed),
         image_size=int(args.image_size),

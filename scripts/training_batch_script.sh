@@ -3,9 +3,9 @@
 # Configure the resources required
 #SBATCH -p batch # partition (this is the queue your job will be added to)
 #SBATCH --ntasks-per-node=2
-#SBATCH --time=24:00:00 # time allocation, which has the format (D-HH:MM), here set to 1 hour
+#SBATCH --time=2-12:00:00 # time allocation, which has the format (D-HH:MM)
 #SBATCH --gres=gpu:1 # generic resource required (here requires 1 GPU)
-#SBATCH --mem=16GB # specify memory required per node (here set to 8 GB)
+#SBATCH --mem=64GB # specify memory required per node (here set to 8 GB)
 
 module use /hpcfs/apps/icl/modules/all/
 module load Python/3.9.6-GCCcore-11.2.0

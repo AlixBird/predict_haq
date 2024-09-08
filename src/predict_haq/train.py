@@ -61,13 +61,15 @@ class XrayDataModule(pl.LightningDataModule):
     """
 
     def __init__(
-            self, data, image_dir, outcome,
+            self, data, image_dir, outcome, seed,
             transform=None, val_split=0.2, num_workers=2,
+
     ):
         super().__init__()
         self.data = data
         self.image_dir = image_dir
         self.outcome = outcome
+        self.seed = seed
         self.transform = transform
         self.val_split = val_split
         self.num_workers = num_workers
@@ -83,9 +85,9 @@ class XrayDataModule(pl.LightningDataModule):
         stage : str
             Fitting, testing or prediction stage
         """
-
         # Split into train and validation randomly at the patient level
         unique_ids = self.data['Patient_ID'].unique()
+        random.seed(self.seed)
         random.shuffle(unique_ids)
         cutoff = round(len(unique_ids) * self.val_split)
         valid_patient_ids = unique_ids[0:cutoff]
@@ -140,7 +142,7 @@ class XrayDataModule(pl.LightningDataModule):
         """
         return DataLoader(
             self.train_dataset,
-            batch_size=16,
+            batch_size=4,
             shuffle=True,
             num_workers=self.num_workers,
             pin_memory=False,
@@ -155,7 +157,7 @@ class XrayDataModule(pl.LightningDataModule):
         """
         return DataLoader(
             self.val_dataset,
-            batch_size=16,
+            batch_size=4,
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=False,
@@ -170,7 +172,7 @@ class XrayDataModule(pl.LightningDataModule):
         """
         return DataLoader(
             self.test_dataset,
-            batch_size=16,
+            batch_size=4,
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=False,
@@ -273,6 +275,7 @@ class DenseNetLightning(pl.LightningModule):
         preds = torch.cat(self.test_preds)
         targets = torch.cat(self.test_true)
         # THIS ONLY WORKS FOR HAQ
+
         targets_bin = [0 if i < 0.125 else 1 for i in targets.cpu()]
         mean_auc, confidence_lower, confidence_upper = bootstrap_auc(
             targets_bin, preds.cpu(), 1000,
@@ -302,6 +305,7 @@ class DenseNetLightning(pl.LightningModule):
 def train_model(
         image_path: Path,
         data: pd.DataFrame,
+        outcome_train: str,
         checkpoint_path: Path,
         outcome: str,
         seed: int,
@@ -347,6 +351,7 @@ def train_model(
     data_module = XrayDataModule(
         data=data,
         outcome=outcome,
+        seed=seed,
         transform=transform,
         image_dir=image_path,
     )
@@ -383,8 +388,12 @@ def train_model(
     trainer.fit(model, train_loader, val_loader)
     results = str(trainer.test(model, test_loader)).replace("'", '"')
 
-    filename_date = outcome + '_results.csv'
-    path_df = Path(checkpoint_path / filename_date)
+    # CURRENTLY NEED TO MANUALLY CHANGE THE SUFFIX
+    # The issue is that we are doing concurrent runs wiht slurm
+    # so it's unclear when we need to create a new dataframe the same
+    suffix = 2
+    filename = str(outcome_train) + '_results' + str(suffix) + '.csv'
+    path_df = Path(checkpoint_path / filename)
 
     params_dict = {
         'Outcome': outcome, 'Seed': seed,
@@ -393,9 +402,6 @@ def train_model(
     }
 
     results_dict = json.loads(results)[0]
-
-    print(params_dict)
-    print(results_dict)
     params_dict.update(results_dict)
 
     data_row = pd.DataFrame(

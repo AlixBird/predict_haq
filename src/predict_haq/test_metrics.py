@@ -25,7 +25,7 @@ def bootstrap_auc(y_true, y_scores, n_bootstraps):
     list
         mean auc, CI lower bound, CI upper bound
     """
-    n_bootstraps = 1000
+    n_bootstraps = 10000
     # Array to store the ROC AUC scores for each bootstrap sample
     bootstrapped_scores = []
 
