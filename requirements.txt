@@ -1,3 +1,7 @@
-matplotlib==3.9.1
+numpy==1.22.4
 pandas==2.2.2
-pydicom==2.4.4
+Pillow==10.4.0
+pytorch_lightning==2.3.3
+scikit_learn==1.5.1
+torch==2.4.0
+torchvision==0.19.0
