@@ -62,10 +62,10 @@ def main():
     csv_path = Path(args.csvpath)
 
     if args.outcome == 'HAQ':
-        df = process_dataframe(csv_path / 'xrays_train.csv', image_path, 'HAQ')
+        df = process_dataframe(csv_path / 'train_data.csv', image_path, 'HAQ')
     if args.outcome == 'Future_HAQ':
         df = process_dataframe(
-            csv_path / 'future_function.csv', image_path, 'HAQ',
+            csv_path / 'train_data_future.csv', image_path, 'HAQ',
         )
 
     print(f'SEED: {args.seed}')

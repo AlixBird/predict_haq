@@ -50,9 +50,9 @@ def process_dataframe(
     ).reset_index(drop=True)
 
     # Remove values above certain range
-    df = df[df[outcome] <= 100]
+    df = df[df[outcome] <= 18]
     # Normalise outcome
-    df[outcome] = df[outcome]/16
+    df[outcome] = df[outcome]/18
     df['date_of_visit'] = pd.to_datetime(df['date_of_visit'])
     df = df.sort_values(
         by=['Patient_ID', 'date_of_visit'],

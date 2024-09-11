@@ -188,7 +188,7 @@ class DenseNetLightning(pl.LightningModule):
         _description_
     """
 
-    def __init__(self, out_features=1, learning_rate=1e-4):
+    def __init__(self, out_features=1, learning_rate=1e-4, outcome='HAQ'):
         super().__init__()
         self.model = densenet161()  # weights=DenseNet161_Weights.IMAGENET1K_V1
         self.model.classifier = nn.Linear(
@@ -196,6 +196,7 @@ class DenseNetLightning(pl.LightningModule):
             out_features,
         )
         self.learning_rate = learning_rate
+        self.outcome = outcome
         self.test_preds = []
         self.test_true = []
 
@@ -257,6 +258,15 @@ class DenseNetLightning(pl.LightningModule):
         self.log('val_RMSE', rmse)
 
     def test_step(self, batch):
+        """Takes test step, calculates loss per batch
+
+        Logs the MSE and RMSE
+
+        Parameters
+        ----------
+        batch : ?
+            batch of data
+        """
         inputs, targets = batch
         inputs = inputs.float()
         targets = targets.float()
@@ -271,12 +281,21 @@ class DenseNetLightning(pl.LightningModule):
         self.test_true.append(targets)
 
     def on_test_epoch_end(self):
+        """Aggregate outputs from the entire tes tdataset
+        Returns
+        -------
+        Mean AUC
+            Returns the mean auc from bootstrapped AUCs
+        """
         # Optionally, aggregate outputs from the entire test dataset
         preds = torch.cat(self.test_preds)
         targets = torch.cat(self.test_true)
         # THIS ONLY WORKS FOR HAQ
 
-        targets_bin = [0 if i < 0.125 else 1 for i in targets.cpu()]
+        if self.outcome == 'HAQ':
+            targets_bin = [0 if i < 0.125/18 else 1 for i in targets.cpu()]
+        elif self.outcome == 'Future_HAQ':
+            targets_bin = [0 if i == 0 else 1 for i in targets.cpu()]
         mean_auc, confidence_lower, confidence_upper = bootstrap_auc(
             targets_bin, preds.cpu(), 1000,
         )
@@ -365,6 +384,7 @@ def train_model(
     model = DenseNetLightning(
         out_features=1,
         learning_rate=learning_rate,
+        outcome=outcome,
     )
 
     tb_logger = pl.loggers.TensorBoardLogger(

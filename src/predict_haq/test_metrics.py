@@ -22,7 +22,7 @@ def bootstrap_auc(y_true, y_scores, n_bootstraps):
 
     Returns
     -------
-    list
+    float, float, float
         mean auc, CI lower bound, CI upper bound
     """
     n_bootstraps = 10000
