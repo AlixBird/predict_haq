@@ -1,7 +1,6 @@
 """Splits train valid data and trains model."""
 from __future__ import annotations
 
-import json
 import os
 import random
 from pathlib import Path
@@ -9,14 +8,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
+import roc_utils
 import torch
 from PIL import Image
-from predict_haq.test_metrics import bootstrap_auc
 from torch import nn
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
-from torchvision import transforms
 from torchvision.models import densenet161
+from torchvision.transforms import v2
 
 
 class XrayDataset(Dataset):
@@ -28,7 +27,7 @@ class XrayDataset(Dataset):
         base dataset class from pytorch
     """
 
-    def __init__(self, image_dir, labels, image_names, transform=None):
+    def __init__(self, image_dir, labels, image_names, transform):
         self.image_dir = image_dir
         self.labels = labels
         self.image_names = image_names
@@ -146,6 +145,7 @@ class XrayDataModule(pl.LightningDataModule):
             shuffle=True,
             num_workers=self.num_workers,
             pin_memory=False,
+            drop_last=True,
         )
 
     def val_dataloader(self):
@@ -161,6 +161,8 @@ class XrayDataModule(pl.LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=False,
+            drop_last=True,
+
         )
 
     def test_dataloader(self):
@@ -176,6 +178,7 @@ class XrayDataModule(pl.LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=False,
+            drop_last=True,
         )
 
 
@@ -188,7 +191,10 @@ class DenseNetLightning(pl.LightningModule):
         _description_
     """
 
-    def __init__(self, out_features=1, learning_rate=1e-4, outcome='HAQ'):
+    def __init__(
+        self, out_features=1, learning_rate=1e-4, outcome='HAQ',
+        handsorfeet=None, seed=123,
+    ):
         super().__init__()
         self.model = densenet161()  # weights=DenseNet161_Weights.IMAGENET1K_V1
         self.model.classifier = nn.Linear(
@@ -197,6 +203,8 @@ class DenseNetLightning(pl.LightningModule):
         )
         self.learning_rate = learning_rate
         self.outcome = outcome
+        self.handsorfeet = handsorfeet
+        self.seed = seed
         self.test_preds = []
         self.test_true = []
 
@@ -290,25 +298,34 @@ class DenseNetLightning(pl.LightningModule):
         # Optionally, aggregate outputs from the entire test dataset
         preds = torch.cat(self.test_preds)
         targets = torch.cat(self.test_true)
-        # THIS ONLY WORKS FOR HAQ
-
-        if self.outcome == 'HAQ':
-            targets_bin = [0 if i < 0.125/18 else 1 for i in targets.cpu()]
-        elif self.outcome == 'Future_HAQ':
-            targets_bin = [0 if i == 0 else 1 for i in targets.cpu()]
-        mean_auc, confidence_lower, confidence_upper = bootstrap_auc(
-            targets_bin, preds.cpu(), 1000,
-        )
         avg_mse = nn.MSELoss()(preds, targets)
-        avg_rmse = torch.sqrt(avg_mse)
+
+        targets_bin = [0 if i == 0 else 1 for i in targets.cpu()]
+
+        preds = [np.array(i.cpu()) for i in preds]
+        targets = [np.array(i.cpu()) for i in targets]
+
+        rocs = roc_utils.compute_roc_bootstrap(
+            X=preds, y=targets_bin, pos_label=1,
+            n_bootstrap=10000,
+            random_state=42,
+            return_mean=False,
+        )
+        roc_mean = roc_utils.compute_mean_roc(rocs)
+        auc_mean = round(float(roc_mean['auc_mean']), 3)
+        auc95_ci = [round(float(i), 3) for i in roc_mean['auc95_ci'][0]]
+
+        dataframe = pd.DataFrame({'Preds': preds, 'Targets': targets})
+        filename = str(self.handsorfeet) + '_' + self.outcome + \
+            '_' + str(self.seed) + '_AI.csv'
+        dataframe.to_csv(Path('figures/') / filename)
         # Log the averaged metrics
         self.log('avg_test_MSE', avg_mse)
-        self.log('avg_test_RMSE', avg_rmse)
-        self.log('mean_AUC', mean_auc)
-        self.log('AUC_95_CI_lower', confidence_lower)
-        self.log('AUC_95_CI_upper', confidence_upper)
+        self.log('mean_AUC', auc_mean)
+        self.log('95_ci_lower', auc95_ci[0])
+        self.log('95_ci_upper', auc95_ci[1])
 
-        return mean_auc
+        return roc_mean, auc95_ci[0], auc95_ci[1]
 
     def configure_optimizers(self):
         """Configure optimizer
@@ -325,6 +342,7 @@ def train_model(
         image_path: Path,
         data: pd.DataFrame,
         outcome_train: str,
+        handsorfeet: str,
         checkpoint_path: Path,
         outcome: str,
         seed: int,
@@ -362,9 +380,14 @@ def train_model(
     os.makedirs(checkpoint_path, exist_ok=True)
 
     # Define any transformations
-    transform = transforms.Compose([
-        transforms.Resize((image_size, image_size)),
-        transforms.ToTensor(),
+    transform = v2.Compose([
+        v2.Resize((image_size+100, image_size+100)),
+        v2.RandomResizedCrop(size=(image_size, image_size)),
+        v2.RandomHorizontalFlip(p=0.5),
+        v2.ColorJitter(brightness=(0.4, 0.6), contrast=(0.4, 0.6)),
+        v2.RandomRotation(degrees=(-10, 10)),
+        v2.RandomInvert(p=0.5),
+        v2.ToTensor(),
     ])
 
     data_module = XrayDataModule(
@@ -384,7 +407,9 @@ def train_model(
     model = DenseNetLightning(
         out_features=1,
         learning_rate=learning_rate,
-        outcome=outcome,
+        outcome=outcome_train,
+        handsorfeet=handsorfeet,
+        seed=seed,
     )
 
     tb_logger = pl.loggers.TensorBoardLogger(
@@ -406,23 +431,14 @@ def train_model(
     )
 
     trainer.fit(model, train_loader, val_loader)
-    results = str(trainer.test(model, test_loader)).replace("'", '"')
-
-    # CURRENTLY NEED TO MANUALLY CHANGE THE SUFFIX
-    # The issue is that we are doing concurrent runs wiht slurm
-    # so it's unclear when we need to create a new dataframe the same
-    suffix = 2
-    filename = str(outcome_train) + '_results' + str(suffix) + '.csv'
+    auc = trainer.test(model, test_loader)
+    filename = str(outcome_train) + '_results.csv'
     path_df = Path(checkpoint_path / filename)
 
     params_dict = {
-        'Outcome': outcome, 'Seed': seed,
-        'Imsize': image_size, 'Epochs': max_epochs,
-        'LR': learning_rate,
+        'Outcome': outcome, 'Hands or feet': handsorfeet, 'Image path': image_path, 'Seed': seed,
+        'Imsize': image_size, 'Epochs': max_epochs, 'LR': learning_rate, 'AUC': auc,
     }
-
-    results_dict = json.loads(results)[0]
-    params_dict.update(results_dict)
 
     data_row = pd.DataFrame(
         params_dict,

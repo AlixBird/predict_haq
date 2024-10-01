@@ -10,7 +10,6 @@ from pathlib import Path
 
 from predict_haq.preprocessing import process_dataframe
 from predict_haq.train import train_model
-# from predict_haq.preprocessing import process_dataframe_future_haq
 
 
 def arg_parse_train():
@@ -35,10 +34,10 @@ def arg_parse_train():
     )
     parser.add_argument(
         '--image_size', help='image size (lenght of side of square)',
-        default=100,
+        default=50,
     )
     parser.add_argument(
-        '--max_epochs', help='number of training epochs', default=20,
+        '--max_epochs', help='number of training epochs', default=1,
     )
     parser.add_argument(
         '--learning_rate',
@@ -48,6 +47,12 @@ def arg_parse_train():
         '--outcome',
         help='outcome to train to, contemporaenous vs future HAQ',
         default='HAQ',
+    )
+
+    parser.add_argument(
+        '--handsorfeet',
+        help='outcome to train to, contemporaenous vs future HAQ',
+        default=None,
     )
     args = parser.parse_args()
     return args
@@ -62,25 +67,31 @@ def main():
     csv_path = Path(args.csvpath)
 
     if args.outcome == 'HAQ':
-        df = process_dataframe(csv_path / 'train_data.csv', image_path, 'HAQ')
-    if args.outcome == 'Future_HAQ':
+        outcome = 'HAQ'
         df = process_dataframe(
-            csv_path / 'train_data_future.csv', image_path, 'HAQ',
+            csv_path / 'train_data_HAQ.csv', image_path, outcome, args.handsorfeet,
+        )
+    if args.outcome == 'Future_HAQ':
+        outcome = 'HAQ'
+        df = process_dataframe(
+            csv_path / 'train_data_future_HAQ.csv', image_path, outcome, args.handsorfeet,
         )
 
     print(f'SEED: {args.seed}')
     print(f'IMAGE SIZE: {args.image_size}')
     print(f'EPOCHS: {args.max_epochs}')
     print(f'LR: {args.learning_rate}')
-    print()
-
+    print(f'INPUT DATA PATH: {image_path}')
+    print(f'OUTCOME: {args.outcome}, {args.handsorfeet}')
     print(f'>>>>>>>>> Training to outcome: {args.outcome} <<<<<<<<<<')
     print()
+
     train_model(
         image_path=image_path,
         data=df,
         outcome_train=args.outcome,
-        outcome='HAQ',
+        handsorfeet=args.handsorfeet,
+        outcome=outcome,
         checkpoint_path=checkpoint_path,
         seed=int(args.seed),
         image_size=int(args.image_size),

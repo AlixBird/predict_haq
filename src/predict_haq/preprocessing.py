@@ -11,6 +11,7 @@ def process_dataframe(
     csv_path: Path,
     image_path: str,
     outcome: str,
+    handsorfeet: str,
 ) -> pd.DataFrame:
     """Load and process dataframes
 
@@ -20,12 +21,12 @@ def process_dataframe(
         path to csv
     image_path: Path
         path to images
-    train_or_test : str
-        whether using train or test csv
     outcome: str
         which outcome, HAQ, pain, SF36
+    process
 
     Returns
+
     -------
     pd.DataFrame
         data with duplicates removed and kept rows with xrays available
@@ -57,4 +58,10 @@ def process_dataframe(
     df = df.sort_values(
         by=['Patient_ID', 'date_of_visit'],
     ).reset_index(drop=True)
+
+    if handsorfeet:
+        if df['Category_hvf'].isna().sum() > 0:
+            df = df[df['Baseline_xray_category'] == handsorfeet]
+        else:
+            df = df[df['Category_hvf'] == handsorfeet]
     return df
