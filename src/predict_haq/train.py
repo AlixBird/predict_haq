@@ -37,14 +37,16 @@ class XrayDataset(Dataset):
         return len(self.image_names)
 
     def __getitem__(self, idx):
+        # Open image
         img_name = self.image_names[idx] + '.png'
         img_path = os.path.join(self.image_dir, img_name)
-
         image = Image.open(img_path).convert('RGB')
 
+        # Apply transforms
         if self.transform:
             image = self.transform(image)
 
+        # Get outcome
         label = self.labels[idx]
 
         return image, label
@@ -60,16 +62,18 @@ class XrayDataModule(pl.LightningDataModule):
     """
 
     def __init__(
-            self, data, image_dir, outcome, seed,
-            transform=None, val_split=0.2, num_workers=2,
+            self, data, test_data, image_dir, outcome, seed,
+            transform, test_transform, val_split=0.2, num_workers=2,
 
     ):
         super().__init__()
         self.data = data
+        self.test_data = test_data
         self.image_dir = image_dir
         self.outcome = outcome
         self.seed = seed
         self.transform = transform
+        self.test_transform = test_transform
         self.val_split = val_split
         self.num_workers = num_workers
         self.train_dataset = None
@@ -104,9 +108,9 @@ class XrayDataModule(pl.LightningDataModule):
             )
         ]
 
+        # Get train and valid image names and outcomes
         train_image_names = list(train_data['UID'])
         valid_image_names = list(valid_data['UID'])
-
         train_labels = np.array(list(train_data[self.outcome]))
         valid_labels = np.array(list(valid_data[self.outcome]))
 
@@ -120,16 +124,18 @@ class XrayDataModule(pl.LightningDataModule):
             image_dir=self.image_dir,
             labels=valid_labels,
             image_names=valid_image_names,
-            transform=self.transform,
+            transform=self.test_transform,
         )
 
-        # This can be changed to the test data once get to that point
-        # Test on validation data until finished model development
+        # Get test image names and outcomes
+        test_image_names = list(self.test_data['UID'])
+        test_labels = list(self.test_data[self.outcome])
+
         self.test_dataset = XrayDataset(
             image_dir=self.image_dir,
-            labels=valid_labels,
-            image_names=valid_image_names,
-            transform=self.transform,
+            labels=test_labels,
+            image_names=test_image_names,
+            transform=self.test_transform,
         )
 
     def train_dataloader(self):
@@ -187,15 +193,16 @@ class DenseNetLightning(pl.LightningModule):
 
     Parameters
     ----------
-    pl : _type_
-        _description_
+    pl : pl.LightningModule
+        parent class fomr pytorch-lightning
     """
 
     def __init__(
-        self, out_features=1, learning_rate=1e-4, outcome='HAQ',
+        self, figures_path, out_features=1, learning_rate=1e-4, outcome='HAQ',
         handsorfeet=None, seed=123,
     ):
         super().__init__()
+        self.figures_path = figures_path
         self.model = densenet161()  # weights=DenseNet161_Weights.IMAGENET1K_V1
         self.model.classifier = nn.Linear(
             self.model.classifier.in_features,
@@ -280,11 +287,7 @@ class DenseNetLightning(pl.LightningModule):
         targets = targets.float()
         outputs = self(inputs).squeeze(dim=1)
         loss = nn.MSELoss()(outputs, targets)
-        rmse = torch.sqrt(loss)
-
         self.log('test_MSE', loss)
-        self.log('test_RMSE', rmse)
-
         self.test_preds.append(outputs)
         self.test_true.append(targets)
 
@@ -295,37 +298,44 @@ class DenseNetLightning(pl.LightningModule):
         Mean AUC
             Returns the mean auc from bootstrapped AUCs
         """
-        # Optionally, aggregate outputs from the entire test dataset
+        # Aaggregate outputs from the entire test dataset
         preds = torch.cat(self.test_preds)
         targets = torch.cat(self.test_true)
         avg_mse = nn.MSELoss()(preds, targets)
 
+        # Binarise targets
         targets_bin = [0 if i == 0 else 1 for i in targets.cpu()]
 
+        # Convert to list to compute ROCs
         preds = [np.array(i.cpu()) for i in preds]
         targets = [np.array(i.cpu()) for i in targets]
 
+        # Bootstrap ROCS
         rocs = roc_utils.compute_roc_bootstrap(
             X=preds, y=targets_bin, pos_label=1,
             n_bootstrap=10000,
             random_state=42,
             return_mean=False,
         )
+
+        # Get mean AUC and 95 CI's
         roc_mean = roc_utils.compute_mean_roc(rocs)
         auc_mean = round(float(roc_mean['auc_mean']), 3)
         auc95_ci = [round(float(i), 3) for i in roc_mean['auc95_ci'][0]]
 
+        # Save preds and targets to dataframe for data visualisation later
         dataframe = pd.DataFrame({'Preds': preds, 'Targets': targets})
         filename = str(self.handsorfeet) + '_' + self.outcome + \
-            '_' + str(self.seed) + '_AI.csv'
-        dataframe.to_csv(Path('figures/') / filename)
-        # Log the averaged metrics
+            '_AI.csv'
+        dataframe.to_csv(self.figures_path / filename)
+
+        # Log the metrics
         self.log('avg_test_MSE', avg_mse)
         self.log('mean_AUC', auc_mean)
         self.log('95_ci_lower', auc95_ci[0])
         self.log('95_ci_upper', auc95_ci[1])
 
-        return roc_mean, auc95_ci[0], auc95_ci[1]
+        return {'Mean AUC': auc_mean, '95 CI lower': auc95_ci[0], '95 CI upper': auc95_ci[1]}
 
     def configure_optimizers(self):
         """Configure optimizer
@@ -340,7 +350,9 @@ class DenseNetLightning(pl.LightningModule):
 
 def train_model(
         image_path: Path,
+        figures_path: Path,
         data: pd.DataFrame,
+        test_data: pd.DataFrame,
         outcome_train: str,
         handsorfeet: str,
         checkpoint_path: Path,
@@ -358,8 +370,21 @@ def train_model(
     ----------
     dataset_path : Path
         Path to the image and csv data
+    figures_path : Path
+        Path to where figures are saved
+    data: pd.DataFrame
+        Training/validation dataframe
+    test_data: pd.DataFrame
+        Test dataframe
+    outcome_train: str
+        Outcome to train to, HAQ or Future_HAQ
+    handsorfeet: str
+        Whether input data is hands or feet
     checkpoint_path : Path
         Path to save model training files
+    outcome: str
+        Which outcome. I'm only looking at HAQ.
+        However will leave this to be able to easily change to other outcomes if of interest
     seed : int
         random seed for everything pl related
     max_epochs : int
@@ -367,7 +392,9 @@ def train_model(
     image_size : int
         size to resize image to
         (note this is a square so we only take one number)
-    lr: float
+    max_epochs : int
+        Number of training epochs
+    learning_rate: float
         learning rate
     """
     # Function for setting the seed
@@ -390,11 +417,18 @@ def train_model(
         v2.ToTensor(),
     ])
 
+    test_transform = v2.Compose([
+        v2.Resize((image_size, image_size)),
+        v2.ToTensor(),
+    ])
+
     data_module = XrayDataModule(
         data=data,
+        test_data=test_data,
         outcome=outcome,
         seed=seed,
         transform=transform,
+        test_transform=test_transform,
         image_dir=image_path,
     )
     data_module.setup()
@@ -404,7 +438,9 @@ def train_model(
 
     torch.set_float32_matmul_precision('medium')
 
+    # Define model
     model = DenseNetLightning(
+        figures_path=figures_path,
         out_features=1,
         learning_rate=learning_rate,
         outcome=outcome_train,
@@ -412,10 +448,11 @@ def train_model(
         seed=seed,
     )
 
+    # Log to tensorboard
     tb_logger = pl.loggers.TensorBoardLogger(
         save_dir='lightning_logs',  # Change this to your desired directory
         # Name of the experiment, can include subfolders
-        name=(f'''LOG_{outcome}
+        name=(f'''LOG_{outcome_train}
               _SEED_{str(seed)}f
               _IMSIZE_{str(image_size)}
               _EPOCHS_{str(max_epochs)}
@@ -423,6 +460,7 @@ def train_model(
         version=1,                # Version of the experiment
     )
 
+    # Define Trainer
     trainer = pl.Trainer(
         deterministic=True,
         max_epochs=max_epochs,
@@ -430,15 +468,21 @@ def train_model(
         accelerator='gpu',
     )
 
+    # Fit model
     trainer.fit(model, train_loader, val_loader)
-    auc = trainer.test(model, test_loader)
+    results = trainer.test(model, test_loader)
+
+    # Save results
     filename = str(outcome_train) + '_results.csv'
     path_df = Path(checkpoint_path / filename)
 
     params_dict = {
-        'Outcome': outcome, 'Hands or feet': handsorfeet, 'Image path': image_path, 'Seed': seed,
-        'Imsize': image_size, 'Epochs': max_epochs, 'LR': learning_rate, 'AUC': auc,
+        'Outcome': outcome_train, 'Seed': seed,
+        'Imsize': image_size, 'Epochs': max_epochs,
+        'LR': learning_rate, 'Handsorfeet': handsorfeet,
     }
+
+    params_dict.update(results[0])
 
     data_row = pd.DataFrame(
         params_dict,

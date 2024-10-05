@@ -1,4 +1,4 @@
-"""This is a test"""
+"""Preprocess data to remove NaNs, impossible values, select hands or feet data"""
 from __future__ import annotations
 
 import os
@@ -23,7 +23,8 @@ def process_dataframe(
         path to images
     outcome: str
         which outcome, HAQ, pain, SF36
-    process
+    handsorfeet: str
+        whether to select hands or feet for training
 
     Returns
 
@@ -52,13 +53,15 @@ def process_dataframe(
 
     # Remove values above certain range
     df = df[df[outcome] <= 18]
-    # Normalise outcome
+    # Scale outcome
+    # At the moment have only scaled the outcome, but could properly normalise it?
     df[outcome] = df[outcome]/18
     df['date_of_visit'] = pd.to_datetime(df['date_of_visit'])
     df = df.sort_values(
         by=['Patient_ID', 'date_of_visit'],
     ).reset_index(drop=True)
 
+    # Select rows that are hands or feet xrays
     if handsorfeet:
         if df['Category_hvf'].isna().sum() > 0:
             df = df[df['Baseline_xray_category'] == handsorfeet]
