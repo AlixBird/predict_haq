@@ -13,7 +13,7 @@
   <p align="center">
     This project investigates the use of plain radiography of the hands and feet in predicting the HAQ score, a measure of function. 
     We investigate both contemporaneous function at every time point available, as well as prediction of HAQ after 1-2 years based on baseline imaging.
-    The perfromance of the AI algorithm is compared to human performance, which is considered to be the manual assessment of radiographs
+    The perfromance of the AI algorithm is compared to human performance, which is measured by the manual assessment of radiographs
     as per the Sharp van der Heijde scoring method. 
   </p>
 </div>
@@ -32,16 +32,6 @@
   </ol>
 </details>
 
-
-
-<!-- ABOUT THE PROJECT -->
-## About The Project
-
-[![Product Name Screen Shot][product-screenshot]](https://example.com)
-
-Here's a blank template to get started: To avoid retyping too much info. Do a search and replace with your text editor for the following: `github_username`, `repo_name`, `twitter_handle`, `linkedin_username`, `email_client`, `email`, `project_title`, `project_description`
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- GETTING STARTED -->
 ### Installation
@@ -66,21 +56,21 @@ Here's a blank template to get started: To avoid retyping too much info. Do a se
 ## Usage
 
 To train the models and produce ROC curves of the performance, simply run the python script train_haq.py.
-Paths to the csv files, images need to be specified as well as where you want the checkpoints and figures saved. 
-Note this data is not publicly available so this is purely to demonstrate ease of use.
+Paths to the csv files and images directory need to be specified as well as where you want the checkpoints and figures saved. 
+Note this data is not publicly available so this is purely for demonstration. 
 
 ```
-python bin/train_haq.py --csvpath=/hpcfs/users/a1628977/data/dataframes/ --imagepath=/hpcfs/users/a1628977/data/xray_images --checkpointpath=/hpcfs/users/a1628977/predict_haq/checkpoints --figurepath=figures
+python bin/train_haq.py --csvpath=/path/to/dataframes/ --imagepath=/path/to/xray_images --checkpointpath=/path/to/checkpoints --figurepath=/path/to/figures
 ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- RESULTS EXAMPLES -->
 ## Results examples
-
+TBA
 
 <!-- ACKNOWLEDGMENTS -->
-## Acknowledgments
+## Supervised by:
 
 * [Professor Lyle Palmer]()
 * [Professor Susanna Proudman]()
