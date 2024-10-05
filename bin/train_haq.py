@@ -9,6 +9,7 @@ import argparse
 from pathlib import Path
 
 from predict_haq.preprocessing import process_dataframe
+from predict_haq.results_visualisation import plot_both_rocs
 from predict_haq.train import train_model
 
 
@@ -29,6 +30,7 @@ def arg_parse_train():
     parser.add_argument('--csvpath', help='path to input csv data')
     parser.add_argument('--imagepath', help='path to input image data')
     parser.add_argument('--checkpointpath', help='path to input data')
+    parser.add_argument('--figurepath', help='path to save data for figures')
     parser.add_argument(
         '--seed', help='random seed for everything', default=134,
     )
@@ -60,23 +62,36 @@ def arg_parse_train():
 
 def main():
     """Takes input arg paths and train models based on parameter
+    Produces roc plots of HAQ prediction comparing performance
+    of the SvdH score and the AI algorithm
     """
+    # Parse args
     args = arg_parse_train()
+    # Convert args to path objects
     image_path = Path(args.imagepath)
+    figures_path = Path(args.figurepath)
     checkpoint_path = Path(args.checkpointpath)
     csv_path = Path(args.csvpath)
 
+    # Define dataframes depending on outcome selected
     if args.outcome == 'HAQ':
         outcome = 'HAQ'
         df = process_dataframe(
             csv_path / 'train_data_HAQ.csv', image_path, outcome, args.handsorfeet,
+        )
+        test_df = process_dataframe(
+            csv_path / 'test_data_HAQ.csv', image_path, outcome, args.handsorfeet,
         )
     if args.outcome == 'Future_HAQ':
         outcome = 'HAQ'
         df = process_dataframe(
             csv_path / 'train_data_future_HAQ.csv', image_path, outcome, args.handsorfeet,
         )
+        test_df = process_dataframe(
+            csv_path / 'test_data_future_HAQ.csv', image_path, outcome, args.handsorfeet,
+        )
 
+    # Print params selected
     print(f'SEED: {args.seed}')
     print(f'IMAGE SIZE: {args.image_size}')
     print(f'EPOCHS: {args.max_epochs}')
@@ -86,9 +101,12 @@ def main():
     print(f'>>>>>>>>> Training to outcome: {args.outcome} <<<<<<<<<<')
     print()
 
+    # Train model
     train_model(
         image_path=image_path,
+        figures_path=figures_path,
         data=df,
+        test_data=test_df,
         outcome_train=args.outcome,
         handsorfeet=args.handsorfeet,
         outcome=outcome,
@@ -98,6 +116,9 @@ def main():
         max_epochs=int(args.max_epochs),
         learning_rate=float(args.learning_rate),
     )
+
+    # Save ROC plots to figures folder
+    plot_both_rocs(args.handsorfeet, args.outcome, figures_path)
 
 
 if __name__ == '__main__':
