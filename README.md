@@ -1,8 +1,5 @@
 <a id="readme-top"></a>
 
-[![MIT License][license-shield]][license-url]
-[![LinkedIn][linkedin-shield]][linkedin-url]
-
 
 <!-- PROJECT LOGO -->
 <br />
@@ -28,21 +25,12 @@
   <summary>Table of Contents</summary>
   <ol>
     <li>
-      <a href="#about-the-project">About The Project</a>
-      <ul>
-        <li><a href="#built-with">Built With</a></li>
-      </ul>
-    </li>
-    <li>
       <a href="#getting-started">Getting Started</a>
       <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
         <li><a href="#installation">Installation</a></li>
       </ul>
     </li>
     <li><a href="#usage">Usage</a></li>
-    <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#contributing">Contributing</a></li>
     <li><a href="#license">License</a></li>
     <li><a href="#contact">Contact</a></li>
     <li><a href="#acknowledgments">Acknowledgments</a></li>
@@ -71,7 +59,7 @@ To get a local copy up and running follow these simple example steps.
 
 1. Clone the repo
    ```
-   git clone https://github.com/github_username/repo_name.git
+   git clone https://github.com/alixbird/predict_haq.git
    ```
 2. Install prerequisties packages
    ```
@@ -94,7 +82,7 @@ Note this data is not publicly available so this is purely to demonstrate ease o
 
 ```
 python bin/train_haq.py --csvpath=/hpcfs/users/a1628977/data/dataframes/ --imagepath=/hpcfs/users/a1628977/data/xray_images --checkpointpath=/hpcfs/users/a1628977/predict_haq/checkpoints --figurepath=figures
- ```
+```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
