@@ -25,7 +25,6 @@ def plot_roc_ci(
         random_state=12,
         return_mean=False,
     )
-
     # Plot mean roc with 95% CI
     roc_utils.plot_mean_roc(
         rocs, show_ci=True, show_ti=True,
@@ -58,10 +57,14 @@ def plot_both_rocs(handsorfeet: str, outcome: str, figures_path: Path):
     ai = pd.read_csv(figures_path / ai_filename)
 
     # Plot ROCs for both
-    plot_roc_ci(ai, 'Preds', 'Targets', 'AI performance', plt_color='red')
-    plot_roc_ci(human, 'final_score', 'HAQ', 'Human performance', plt_color='blue')
+    plot_roc_ci(ai, 'Preds', 'Targets', f'AI performance, n = {len(ai)}', plt_color='#377eb8')
+    plot_roc_ci(
+        human, 'final_score', 'HAQ',
+        f'Human performance, n = {len(human)}', plt_color='#ff7f00',
+    )
 
     # Save figure
+    plt.legend(fontsize=9)
     plt.title(f'{outcome} {handsorfeet}')
     pngname = handsorfeet+outcome+'.png'
     plt.savefig(figures_path / pngname, dpi=300)

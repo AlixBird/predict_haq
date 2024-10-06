@@ -168,7 +168,6 @@ class XrayDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             pin_memory=False,
             drop_last=True,
-
         )
 
     def test_dataloader(self):
@@ -406,7 +405,7 @@ def train_model(
     # Create checkpoint path if it doesn't exist yet
     os.makedirs(checkpoint_path, exist_ok=True)
 
-    # Define any transformations
+    # Define train transformations
     transform = v2.Compose([
         v2.Resize((image_size+100, image_size+100)),
         v2.RandomResizedCrop(size=(image_size, image_size)),
@@ -417,6 +416,7 @@ def train_model(
         v2.ToTensor(),
     ])
 
+    # Define test transformations
     test_transform = v2.Compose([
         v2.Resize((image_size, image_size)),
         v2.ToTensor(),

@@ -20,7 +20,8 @@ export MODCONFIG="
 --learning_rate=${LEARNING_RATE}
 --outcome=${OUTCOME}
 --seed=${SEED}
---handsorfeet=${HANDSORFEET}"
+--handsorfeet=${HANDSORFEET}
+--train_model"
 
 sbatch training_batch_script.sh
 

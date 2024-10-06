@@ -56,6 +56,8 @@ def arg_parse_train():
         help='outcome to train to, contemporaenous vs future HAQ',
         default=None,
     )
+
+    parser.add_argument('--train_model', default=False, action=argparse.BooleanOptionalAction)
     args = parser.parse_args()
     return args
 
@@ -101,21 +103,22 @@ def main():
     print(f'>>>>>>>>> Training to outcome: {args.outcome} <<<<<<<<<<')
     print()
 
-    # Train model
-    train_model(
-        image_path=image_path,
-        figures_path=figures_path,
-        data=df,
-        test_data=test_df,
-        outcome_train=args.outcome,
-        handsorfeet=args.handsorfeet,
-        outcome=outcome,
-        checkpoint_path=checkpoint_path,
-        seed=int(args.seed),
-        image_size=int(args.image_size),
-        max_epochs=int(args.max_epochs),
-        learning_rate=float(args.learning_rate),
-    )
+    if args.train_model:
+        # Train model
+        train_model(
+            image_path=image_path,
+            figures_path=figures_path,
+            data=df,
+            test_data=test_df,
+            outcome_train=args.outcome,
+            handsorfeet=args.handsorfeet,
+            outcome=outcome,
+            checkpoint_path=checkpoint_path,
+            seed=int(args.seed),
+            image_size=int(args.image_size),
+            max_epochs=int(args.max_epochs),
+            learning_rate=float(args.learning_rate),
+        )
 
     # Save ROC plots to figures folder
     plot_both_rocs(args.handsorfeet, args.outcome, figures_path)
