@@ -9,6 +9,14 @@ import roc_utils
 plt.style.use('ggplot')
 
 
+def binarise_outcome(data, thresh):
+    return [1 if i > thresh else thresh for i in data]
+
+
+def round_list(lst, k):
+    return [round(float(i), k) for i in lst]
+
+
 def plot_roc_ci(
     dataframe: pd.DataFrame,
     x_name: str,
@@ -17,34 +25,43 @@ def plot_roc_ci(
     plt_color: str,
     thresh: float,
     title: str,
+    plot: bool,
 ):
-
     # Convert outcome to binary
-    Y = [1 if i > thresh else thresh for i in dataframe[y_name]]
+    Y = binarise_outcome(dataframe[y_name], thresh)
 
     # Bootstrap rocs
     rocs = roc_utils.compute_roc_bootstrap(
         X=dataframe[x_name], y=Y, pos_label=1,
-        n_bootstrap=1000,
+        n_bootstrap=10000,
         random_state=12,
         return_mean=False,
     )
 
-    ret_mean = roc_utils.plot_mean_roc(
-        rocs, show_ci=False, show_ti=True,
-        color=plt_color, auto_flip=False, label=legend_name,
-    )
+    if plot:
+        ret_mean = roc_utils.plot_mean_roc(
+            rocs, show_ci=False, show_ti=True,
+            color=plt_color, auto_flip=False, label=legend_name,
+        )
+    else:
+        ret_mean = roc_utils.compute_mean_roc(rocs, auto_flip=False)
 
-    auc_mean = round(float(ret_mean['auc_mean']), 4)
-    auc95_ci = [round(float(i), 4) for i in ret_mean['auc95_ti'][0]]
     dict_results = {
         'Result': title + legend_name,
-        'AUC mean': round(auc_mean, 4), '95% CI': str(auc95_ci),
-    }  # Provide an index
+        'AUC mean': round(ret_mean['auc_mean'], 4),
+        '95% CI': str(round_list(ret_mean['auc95_ti'][0], 4)),
+    }
+
     return dict_results
 
 
-def plot_both_rocs(handsorfeet: str, outcome: str, figures_path: Path, thresh: float):
+def plot_both_rocs(
+        handsorfeet: str,
+        outcome: str,
+        figures_path: Path,
+        thresh: float,
+        plot: bool = False,
+):
     """_summary_
 
     Parameters
@@ -69,7 +86,6 @@ def plot_both_rocs(handsorfeet: str, outcome: str, figures_path: Path, thresh: f
     ai = pd.read_csv(figures_path / ai_filename)
 
     # Save figure
-
     if outcome == 'HAQ':
         title = 'Contemporaneous HAQ'
     if outcome == 'Future_HAQ':
@@ -77,7 +93,7 @@ def plot_both_rocs(handsorfeet: str, outcome: str, figures_path: Path, thresh: f
     if outcome == 'HAQ_change':
         title = '1-2 year HAQ change'
 
-        # Plot ROCs for both
+    # Plot ROCs for both
     dict_results_ai = plot_roc_ci(
         ai,
         'Preds',
@@ -86,7 +102,9 @@ def plot_both_rocs(handsorfeet: str, outcome: str, figures_path: Path, thresh: f
         plt_color='#377eb8',
         thresh=thresh,
         title=title,
+        plot=plot,
     )
+
     dict_results_svdh = plot_roc_ci(
         human,
         'final_score',
@@ -95,11 +113,14 @@ def plot_both_rocs(handsorfeet: str, outcome: str, figures_path: Path, thresh: f
         plt_color='#ff7f00',
         thresh=thresh,
         title=title,
+        plot=plot,
     )
-    plt.legend(fontsize=7, loc='lower right')
-    plt.title(f'{title} - {handsorfeet}')
-    pngname = handsorfeet+outcome+'.png'
-    plt.savefig(figures_path / pngname, dpi=300)
+
+    if plot:
+        plt.legend(fontsize=7, loc='lower right')
+        plt.title(f'{title} - {handsorfeet}')
+        pngname = handsorfeet+outcome+'.png'
+        plt.savefig(figures_path / pngname, dpi=300)
 
     data_rows = pd.DataFrame.from_dict([dict_results_ai, dict_results_svdh])
     path_df = figures_path / 'auc_results.csv'
