@@ -2,8 +2,10 @@
 
 #for IMAGE_SIZE in {900,1200}; do
 #for LEARNING_RATE in {1e-4,1e-3,1e-5}; do
-for OUTCOME in {"HAQ","Future_HAQ"}; do
+#for OUTCOME in {"HAQ","HAQ_change"}; do
 for HANDSORFEET in {"Hands","Feet"}; do
+
+OUTCOME="HAQ_change"
 SEED=2308
 IMAGE_SIZE=1200
 MAX_EPOCHS=500
@@ -20,9 +22,9 @@ export MODCONFIG="
 --learning_rate=${LEARNING_RATE}
 --outcome=${OUTCOME}
 --seed=${SEED}
---handsorfeet=${HANDSORFEET}"
+--handsorfeet=${HANDSORFEET}
+--train"
 
 sbatch training_batch_script.sh
 
-done; 
 done; 

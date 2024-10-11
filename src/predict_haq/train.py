@@ -27,10 +27,11 @@ class XrayDataset(Dataset):
         base dataset class from pytorch
     """
 
-    def __init__(self, image_dir, labels, image_names, transform):
+    def __init__(self, image_dir, labels, image_names, patient_ids, transform):
         self.image_dir = image_dir
         self.labels = labels
         self.image_names = image_names
+        self.patient_ids = patient_ids
         self.transform = transform
 
     def __len__(self):
@@ -49,7 +50,10 @@ class XrayDataset(Dataset):
         # Get outcome
         label = self.labels[idx]
 
-        return image, label
+        # Get patient_id
+        patient_id = self.patient_ids[idx]
+
+        return image, label, patient_id
 
 
 class XrayDataModule(pl.LightningDataModule):
@@ -114,16 +118,23 @@ class XrayDataModule(pl.LightningDataModule):
         train_labels = np.array(list(train_data[self.outcome]))
         valid_labels = np.array(list(valid_data[self.outcome]))
 
+        # get patient_ids
+        train_patient_ids = list(train_data['Patient_ID'])
+        valid_patient_ids = list(valid_data['Patient_ID'])
+        test_patient_ids = list(self.test_data['Patient_ID'])
+
         self.train_dataset = XrayDataset(
             image_dir=self.image_dir,
             labels=train_labels,
             image_names=train_image_names,
+            patient_ids=train_patient_ids,
             transform=self.transform,
         )
         self.val_dataset = XrayDataset(
             image_dir=self.image_dir,
             labels=valid_labels,
             image_names=valid_image_names,
+            patient_ids=valid_patient_ids,
             transform=self.test_transform,
         )
 
@@ -135,6 +146,7 @@ class XrayDataModule(pl.LightningDataModule):
             image_dir=self.image_dir,
             labels=test_labels,
             image_names=test_image_names,
+            patient_ids=test_patient_ids,
             transform=self.test_transform,
         )
 
@@ -203,7 +215,7 @@ class DenseNetLightning(pl.LightningModule):
     ):
         super().__init__()
         self.figures_path = figures_path
-        self.model = densenet161()  # weights=DenseNet161_Weights.IMAGENET1K_V1
+        self.model = densenet161()  # weights=DenseNet161_Weights.IMAGENET1K_V1)
         self.model.classifier = nn.Linear(
             self.model.classifier.in_features,
             out_features,
@@ -214,6 +226,7 @@ class DenseNetLightning(pl.LightningModule):
         self.seed = seed
         self.test_preds = []
         self.test_true = []
+        self.test_patient_ids = []
 
     def forward(self, inputs):  # pylint: disable=arguments-differ
         """Forward pass
@@ -242,7 +255,7 @@ class DenseNetLightning(pl.LightningModule):
         float
             loss value
         """
-        inputs, targets = batch
+        inputs, targets, _ = batch
         inputs = inputs.float()
         targets = targets.float()/18
         outputs = self(inputs).squeeze(dim=1)
@@ -262,7 +275,7 @@ class DenseNetLightning(pl.LightningModule):
         float
             loss value
         """
-        inputs, targets = batch
+        inputs, targets, _ = batch
         inputs = inputs.float()
         targets = targets.float()
         outputs = self(inputs).squeeze(dim=1)
@@ -282,7 +295,7 @@ class DenseNetLightning(pl.LightningModule):
         batch : ?
             batch of data
         """
-        inputs, targets = batch
+        inputs, targets, patient_ids = batch
         inputs = inputs.float()
         targets = targets.float()
         outputs = self(inputs).squeeze(dim=1)
@@ -290,6 +303,7 @@ class DenseNetLightning(pl.LightningModule):
         self.log('test_MSE', loss)
         self.test_preds.append(outputs)
         self.test_true.append(targets)
+        self.test_patient_ids.append(patient_ids)
 
     def on_test_epoch_end(self):
         """Aggregate outputs from the entire tes tdataset
@@ -301,14 +315,15 @@ class DenseNetLightning(pl.LightningModule):
         # Aaggregate outputs from the entire test dataset
         preds = torch.cat(self.test_preds)
         targets = torch.cat(self.test_true)
+        patient_ids = torch.cat(self.test_patient_ids)
         avg_mse = nn.MSELoss()(preds, targets)
 
         # Binarise targets
-        targets_bin = [0 if i == 0 else 1 for i in targets.cpu()]
-
+        targets_bin = [1 if i > 0 else 0 for i in targets.cpu()]
         # Convert to list to compute ROCs
         preds = [np.array(i.cpu()) for i in preds]
         targets = [np.array(i.cpu()) for i in targets]
+        patient_ids = [np.array(i.cpu()) for i in patient_ids]
 
         # Bootstrap ROCS
         rocs = roc_utils.compute_roc_bootstrap(
@@ -324,9 +339,12 @@ class DenseNetLightning(pl.LightningModule):
         auc95_ci = [round(float(i), 3) for i in roc_mean['auc95_ci'][0]]
 
         # Save preds and targets to dataframe for data visualisation later
-        dataframe = pd.DataFrame({'Preds': preds, 'Targets': targets})
-        filename = str(self.handsorfeet) + '_' + self.outcome + \
-            '_AI.csv'
+        dataframe = pd.DataFrame({
+            'Patient_ID': patient_ids,
+            'Preds': preds,
+            'Targets': targets,
+        })
+        filename = str(self.handsorfeet) + '_' + self.outcome + '_AI.csv'
         dataframe.to_csv(self.figures_path / filename)
 
         # Log the metrics

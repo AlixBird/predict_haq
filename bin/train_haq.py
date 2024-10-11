@@ -9,6 +9,7 @@ import argparse
 from pathlib import Path
 
 from predict_haq.preprocessing import process_dataframe
+from predict_haq.preprocessing import process_dataframe_haq_change
 from predict_haq.results_visualisation import plot_both_rocs
 from predict_haq.train import train_model
 
@@ -56,6 +57,8 @@ def arg_parse_train():
         help='outcome to train to, contemporaenous vs future HAQ',
         default=None,
     )
+    parser.add_argument('--train', default=False, action=argparse.BooleanOptionalAction)
+
     args = parser.parse_args()
     return args
 
@@ -82,43 +85,55 @@ def main():
         test_df = process_dataframe(
             csv_path / 'test_data_HAQ.csv', image_path, outcome, args.handsorfeet,
         )
-    if args.outcome == 'Future_HAQ':
-        outcome = 'HAQ'
-        df = process_dataframe(
-            csv_path / 'train_data_future_HAQ.csv', image_path, outcome, args.handsorfeet,
-        )
-        test_df = process_dataframe(
-            csv_path / 'test_data_future_HAQ.csv', image_path, outcome, args.handsorfeet,
-        )
+    else:
+        if args.outcome == 'Future_HAQ':
+            outcome = 'HAQ'
+        elif args.outcome == 'HAQ_change':
+            outcome = 'HAQ_change'
 
-    # Print params selected
+        if args.handsorfeet == 'Hands':
+            df = process_dataframe_haq_change(
+                csv_path / 'train_data_future_hands_HAQ.csv', image_path, outcome,
+            )
+            test_df = process_dataframe_haq_change(
+                csv_path / 'test_data_future_hands_HAQ.csv', image_path, outcome,
+            )
+        elif args.handsorfeet == 'Feet':
+            df = process_dataframe_haq_change(
+                csv_path / 'train_data_future_feet_HAQ.csv', image_path, outcome,
+            )
+            test_df = process_dataframe_haq_change(
+                csv_path / 'test_data_future_feet_HAQ.csv', image_path, outcome,
+            )
+
+        # Print params selected
     print(f'SEED: {args.seed}')
     print(f'IMAGE SIZE: {args.image_size}')
     print(f'EPOCHS: {args.max_epochs}')
     print(f'LR: {args.learning_rate}')
     print(f'INPUT DATA PATH: {image_path}')
     print(f'OUTCOME: {args.outcome}, {args.handsorfeet}')
-    print(f'>>>>>>>>> Training to outcome: {args.outcome} <<<<<<<<<<')
-    print()
 
-    # Train model
-    train_model(
-        image_path=image_path,
-        figures_path=figures_path,
-        data=df,
-        test_data=test_df,
-        outcome_train=args.outcome,
-        handsorfeet=args.handsorfeet,
-        outcome=outcome,
-        checkpoint_path=checkpoint_path,
-        seed=int(args.seed),
-        image_size=int(args.image_size),
-        max_epochs=int(args.max_epochs),
-        learning_rate=float(args.learning_rate),
-    )
+    print()
+    if args.train:
+        print(f'>>>>>>>>> Training to outcome: {args.outcome} <<<<<<<<<<')
+        train_model(
+            image_path=image_path,
+            figures_path=figures_path,
+            data=df,
+            test_data=test_df,
+            outcome_train=args.outcome,
+            handsorfeet=args.handsorfeet,
+            outcome=outcome,
+            checkpoint_path=checkpoint_path,
+            seed=int(args.seed),
+            image_size=int(args.image_size),
+            max_epochs=int(args.max_epochs),
+            learning_rate=float(args.learning_rate),
+        )
 
     # Save ROC plots to figures folder
-    plot_both_rocs(args.handsorfeet, args.outcome, figures_path)
+    plot_both_rocs(args.handsorfeet, args.outcome, figures_path, thresh=0)
 
 
 if __name__ == '__main__':
