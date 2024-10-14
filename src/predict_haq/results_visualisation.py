@@ -105,6 +105,7 @@ def get_roc_ci(
         return_mean=False,
     )
 
+
     if plot:
         ret_mean = plot_mean_roc(
             rocs, show_ci=False, show_ti=True,
@@ -112,6 +113,7 @@ def get_roc_ci(
         )
     else:
         ret_mean = compute_mean_roc(rocs, auto_flip=False)
+
 
     dict_results = {
         'Result': title + legend_name,
@@ -303,3 +305,4 @@ def plot_ai_vs_human_rocs(
         figures_path / 'auc_results.csv',
     )
     results_df.to_csv(figures_path / 'auc_results.csv', index=False)
+

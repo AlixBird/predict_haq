@@ -57,6 +57,7 @@ def arg_parse_train():
         help='outcome to train to, contemporaenous vs future HAQ',
         default=None,
     )
+
     parser.add_argument('--train', default=False, action=argparse.BooleanOptionalAction)
 
     args = parser.parse_args()
@@ -117,6 +118,7 @@ def main():
     print()
     if args.train:
         print(f'>>>>>>>>> Training to outcome: {args.outcome} <<<<<<<<<<')
+
         train_model(
             image_path=image_path,
             figures_path=figures_path,

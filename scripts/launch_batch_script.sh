@@ -25,6 +25,7 @@ export MODCONFIG="
 --handsorfeet=${HANDSORFEET}
 --train"
 
+
 sbatch training_batch_script.sh
 
 done; 
