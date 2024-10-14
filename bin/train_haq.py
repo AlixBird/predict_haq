@@ -10,7 +10,7 @@ from pathlib import Path
 
 from predict_haq.preprocessing import process_dataframe
 from predict_haq.preprocessing import process_dataframe_haq_change
-from predict_haq.results_visualisation import plot_both_rocs
+from predict_haq.results_visualisation import plot_ai_vs_human_rocs
 from predict_haq.train import train_model
 
 
@@ -133,7 +133,7 @@ def main():
         )
 
     # Save ROC plots to figures folder
-    plot_both_rocs(args.handsorfeet, args.outcome, figures_path, thresh=0)
+    plot_ai_vs_human_rocs(args.handsorfeet, args.outcome, figures_path, thresh=0)
 
 
 if __name__ == '__main__':
